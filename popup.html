@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>極速穿透翻譯設定</title>
+  <style>
+    body {
+      width: 330px;
+      margin: 0;
+      padding: 16px;
+      background: #18181b;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fafafa;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #27272a;
+      padding-bottom: 8px;
+    }
+    .badge-ok {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #064e3b;
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .card {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .label {
+      font-weight: 500;
+      margin-bottom: 4px;
+      color: #d4d4d8;
+      display: block;
+      font-size: 12px;
+    }
+    select, input {
+      width: 100%;
+      box-sizing: border-box;
+      background: #18181b;
+      border: 1px solid #52525b;
+      color: #fff;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    select:focus, input:focus {
+      border-color: #38bdf8;
+    }
+    .shortcuts {
+      font-size: 12px;
+      line-height: 1.6;
+      color: #a1a1aa;
+    }
+    .kbd {
+      background: #3f3f46;
+      color: #f4f4f5;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .btn {
+      width: 100%;
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover {
+      background: #0369a1;
+    }
+    #msg {
+      margin-top: 8px;
+      font-size: 12px;
+      text-align: center;
+      color: #34d399;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>🌐 極速穿透翻譯</h2>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+      <span class="label" style="margin:0;">文字翻譯引擎</span>
+      <span class="badge-ok">微軟 Edge 官方直連</span>
+    </div>
+    <div style="font-size:11px; color:#a1a1aa;">免 Key、無速率限制、穿透防複製。</div>
+  </div>
+
+  <div class="card">
+    <span class="label">截圖 OCR 辨識引擎</span>
+    <select id="ocrEngine">
+      <option value="tesseract">Tesseract.js 本地離線識別（預設・免網路・無 403）</option>
+      <option value="vision_api">自訂外部 OpenAI 相容視覺 API</option>
+    </select>
+
+    <div id="visionConfig" style="display: none;">
+      <span class="label">API 端點</span>
+      <input type="text" id="apiUrl" placeholder="https://api.openai.com/v1">
+
+      <span class="label">模型名稱</span>
+      <input type="text" id="model" placeholder="gpt-4o-mini">
+
+      <span class="label">API Key</span>
+      <input type="password" id="apiKey" placeholder="sk-...">
+    </div>
+
+    <button id="saveBtn" class="btn">儲存設定</button>
+    <div id="msg">設定已保存 ✓</div>
+  </div>
+
+  <div class="shortcuts">
+    <div>🖱️ <b>劃詞選取</b>：選中文字即刻翻譯</div>
+    <div>⚡ <span class="kbd">Alt</span> + <b>懸停</b>：翻譯標籤、按鈕、段落</div>
+    <div>📸 <span class="kbd">Alt + S</span>：框選截圖離線 OCR 翻譯</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

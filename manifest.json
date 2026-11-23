@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "極速穿透划詞與截圖翻譯",
+  "version": "2.2",
+  "description": "支援任意網頁/防複製網頁的劃詞、Alt+懸停翻譯，以及 Alt+S 框選截圖離線 OCR 與翻譯",
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tesseract.min.js",
+        "worker.min.js",
+        "tesseract-core.wasm.js",
+        "eng.traineddata.gz",
+        "offscreen.html",
+        "offscreen.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "極速翻譯設定",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "commands": {
+    "capture-translate": {
+      "suggested_key": {
+        "default": "Alt+S"
+      },
+      "description": "框選截圖 OCR 翻譯"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
