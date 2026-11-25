@@ -12,6 +12,12 @@ function formatError(err) {
 
 // 監聽來自 content_scripts 或 popup 的訊息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 預熱喚醒 MV3 Service Worker，消除剛打開網頁時的首次按鍵延遲
+  if (request.action === 'PING') {
+    sendResponse({ success: true, pong: true });
+    return true;
+  }
+
   if (request.action === 'TRANSLATE') {
     handleTranslate(request.text)
       .then(result => sendResponse({ success: true, result }))

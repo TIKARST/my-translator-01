@@ -3,6 +3,9 @@
   if (window.__EXT_TRANSLATOR_INJECTED__) return;
   window.__EXT_TRANSLATOR_INJECTED__ = true;
 
+  // 頁面注入時立刻預熱喚醒 MV3 Service Worker，消除剛打開網頁時的冷啟動延遲
+  chrome.runtime.sendMessage({ action: 'PING' }).catch(() => {});
+
   // 1. 強制解除防複製限制（CSS 穿透 + 事件攔截）
   const unlockStyle = document.createElement('style');
   unlockStyle.id = '__ext_unlock_style__';
@@ -59,11 +62,6 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       box-sizing: border-box;
       z-index: 2147483647;
-      animation: transFadeIn 0.15s ease-out;
-    }
-    @keyframes transFadeIn {
-      from { opacity: 0; transform: scale(0.96); }
-      to { opacity: 1; transform: scale(1); }
     }
     .trans-header {
       display: flex;
@@ -175,11 +173,34 @@
   popup.className = 'trans-popup';
   shadow.appendChild(popup);
 
+  // 狀態追蹤變數
+  let isAltPressed = false;
+  let currentRequestId = 0; // 請求版本號，用於作廢鬆開 Alt 後才返回的過期結果
+  let popupSource = 'manual'; // 'alt'（Alt 懸停觸發，鬆手即關） | 'manual'（劃詞/截圖觸發，點擊外部關閉）
+  let hoverTimer = null;
+  let lastMouseX = 0;
+  let lastMouseY = 0;
+  let lastHoveredElement = null;
+
   function hidePopup() {
     popup.style.display = 'none';
   }
 
-  function showPopup({ title = '翻譯結果', content = '', original = '', x = 20, y = 20, isLoading = false, badge = '微軟 Edge 翻譯' }) {
+  function clearAltStateAndHide() {
+    isAltPressed = false;
+    if (hoverTimer) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    currentRequestId++; // 作廢所有仍在路上的 Alt 翻譯請求
+    if (popupSource === 'alt') {
+      hidePopup();
+    }
+  }
+
+  function showPopup({ title = '翻譯結果', content = '', original = '', x = 20, y = 20, isLoading = false, badge = '微軟 Edge 翻譯', source = 'manual' }) {
+    popupSource = source;
+
     // 智慧視窗邊界限制
     const width = 320;
     const padding = 15;
@@ -202,11 +223,7 @@
           <button class="trans-close">&times;</button>
         </div>
         <div class="trans-content" style="color: #a1a1aa; display: flex; align-items: center; gap: 8px;">
-          <svg style="animation: spin 1s linear infinite; width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity="0.25"></circle>
-            <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-          </svg>
-          ${content || '處理中...'}
+          <span>⏳ ${content || '處理中...'}</span>
         </div>
       `;
       shadow.querySelector('.trans-close').onclick = hidePopup;
@@ -263,8 +280,14 @@
     }[m]));
   }
 
+  function extractElementText(target) {
+    if (!target || target === document.body || target === document.documentElement) return '';
+    const text = target.innerText?.trim() || target.textContent?.trim() || target.alt || target.title || target.value || '';
+    return text.length > 0 && text.length < 400 ? text : '';
+  }
+
   // -------------------------------------------------------------
-  // 場景 A：劃詞翻譯與 Alt + 懸停翻譯
+  // 場景 A：劃詞翻譯與 Alt 懸停翻譯
   // -------------------------------------------------------------
 
   // 1. 拖曳劃詞
@@ -278,54 +301,67 @@
       if (text && text.length > 0 && text.length < 4000) {
         try {
           const rect = sel.getRangeAt(0).getBoundingClientRect();
-          triggerTextTranslate(text, rect.left, rect.bottom);
+          triggerTextTranslate(text, rect.left, rect.bottom, 'manual');
         } catch (err) {
-          triggerTextTranslate(text, e.clientX, e.clientY);
+          triggerTextTranslate(text, e.clientX, e.clientY, 'manual');
         }
       }
     }, 15);
   }, true);
 
-  // 2. 按住 Alt 懸停翻譯（Civitai 標籤、各類按鈕、段落文字）
-  let hoverTimer = null;
+  // 2. 追蹤游標位置 + 按住 Alt 懸停翻譯
   document.addEventListener('mousemove', (e) => {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+    lastHoveredElement = e.target;
+
     if (isSelectingArea) return;
+
+    // 若未按住 Alt，確保清理狀態並直接返回
     if (!e.altKey) {
-      if (hoverTimer) {
-        clearTimeout(hoverTimer);
-        hoverTimer = null;
+      if (isAltPressed) {
+        clearAltStateAndHide();
       }
       return;
     }
+
+    isAltPressed = true;
     if (e.composedPath().includes(popup)) return;
 
     if (hoverTimer) clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
-      if (!e.altKey) return;
-      const target = e.target;
-      let targetText = target.innerText?.trim() || target.textContent?.trim() || target.alt || target.title || target.value;
-      if (targetText && targetText.length > 0 && targetText.length < 400) {
-        triggerTextTranslate(targetText, e.clientX, e.clientY + 10);
+      if (!isAltPressed) return;
+      const targetText = extractElementText(e.target);
+      if (targetText) {
+        triggerTextTranslate(targetText, e.clientX, e.clientY + 10, 'alt');
       }
-    }, 220);
+    }, 150);
   }, true);
 
-  function triggerTextTranslate(text, x, y) {
+  function triggerTextTranslate(text, x, y, source = 'manual') {
+    const reqId = ++currentRequestId;
+
     showPopup({
       title: '文字翻譯',
       content: '正在翻譯...',
       x,
       y,
-      isLoading: true
+      isLoading: true,
+      source
     });
 
     chrome.runtime.sendMessage({ action: 'TRANSLATE', text }, (response) => {
+      // 若為 Alt 觸發但用戶已鬆開 Alt，或已有更新的請求發出，直接丟棄過期結果，絕不重新彈窗
+      if (reqId !== currentRequestId) return;
+      if (source === 'alt' && !isAltPressed) return;
+
       if (chrome.runtime.lastError) {
         showPopup({
           title: '通訊異常',
           content: chrome.runtime.lastError.message,
           x,
-          y
+          y,
+          source
         });
         return;
       }
@@ -334,7 +370,8 @@
           title: '翻譯失敗',
           content: response?.error || '接口無回應',
           x,
-          y
+          y,
+          source
         });
         return;
       }
@@ -343,7 +380,8 @@
         content: response.result,
         x,
         y,
-        badge: '微軟 Edge 翻譯'
+        badge: '微軟 Edge 翻譯',
+        source
       });
     });
   }
@@ -367,9 +405,9 @@
   function startAreaSelection() {
     if (isSelectingArea) return;
     isSelectingArea = true;
+    clearAltStateAndHide();
     hidePopup();
 
-    // 建立半透明遮罩
     ocrMask = document.createElement('div');
     ocrMask.className = 'ocr-mask';
 
@@ -388,7 +426,7 @@
     let isDragging = false;
 
     ocrMask.onmousedown = (e) => {
-      if (e.button !== 0) return; // 僅限滑鼠左鍵
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       isDragging = true;
@@ -434,7 +472,6 @@
 
       cancelAreaSelection();
 
-      // 避免誤觸微小選框
       if (width > 12 && height > 12) {
         triggerAreaOcr({
           x,
@@ -446,7 +483,6 @@
       }
     };
 
-    // 右鍵取消
     ocrMask.oncontextmenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -469,7 +505,8 @@
       content: '正在截取畫面並離線識別文字 (Tesseract)...',
       x: area.x,
       y: area.y + area.height + 10,
-      isLoading: true
+      isLoading: true,
+      source: 'manual'
     });
 
     chrome.runtime.sendMessage({ action: 'OCR_TRANSLATE', area }, (response) => {
@@ -478,7 +515,8 @@
           title: '辨識異常',
           content: chrome.runtime.lastError.message,
           x: area.x,
-          y: area.y + area.height + 10
+          y: area.y + area.height + 10,
+          source: 'manual'
         });
         return;
       }
@@ -487,7 +525,8 @@
           title: '辨識失敗',
           content: response?.error || 'OCR 引擎無回應',
           x: area.x,
-          y: area.y + area.height + 10
+          y: area.y + area.height + 10,
+          source: 'manual'
         });
         return;
       }
@@ -502,22 +541,63 @@
         original,
         x: area.x,
         y: area.y + area.height + 10,
-        badge: 'Tesseract 離線 OCR'
+        badge: 'Tesseract 離線 OCR',
+        source: 'manual'
       });
     });
   }
 
-  // 快捷鍵監聽（Alt + S 啟動截圖選框，ESC 取消）
+  // -------------------------------------------------------------
+  // 快捷鍵與 Alt 狀態生命週期監聽（捕獲階段優先響應）
+  // -------------------------------------------------------------
   window.addEventListener('keydown', (e) => {
+    // Alt + S 啟動截圖選框
     if (e.altKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS')) {
       e.preventDefault();
       e.stopPropagation();
       startAreaSelection();
-    } else if (e.key === 'Escape' && isSelectingArea) {
-      e.preventDefault();
-      cancelAreaSelection();
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (isSelectingArea) {
+        e.preventDefault();
+        cancelAreaSelection();
+      } else if (popup.style.display === 'block') {
+        hidePopup();
+      }
+      return;
+    }
+
+    // 記錄 Alt 按下狀態，若游標已停留在元素上則短暫延遲後自動翻譯（避免與 Alt+S 衝突）
+    if (e.key === 'Alt' && !e.repeat) {
+      isAltPressed = true;
+      if (!isSelectingArea && lastHoveredElement) {
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => {
+          if (!isAltPressed || isSelectingArea) return;
+          const targetText = extractElementText(lastHoveredElement);
+          if (targetText) {
+            triggerTextTranslate(targetText, lastMouseX, lastMouseY + 10, 'alt');
+          }
+        }, 120);
+      }
     }
   }, true);
+
+  window.addEventListener('keyup', (e) => {
+    // 鬆開 Alt 時立刻銷毀 Alt 懸停黑框並作廢未完成請求
+    if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight' || !e.altKey) {
+      if (isAltPressed) {
+        clearAltStateAndHide();
+      }
+    }
+  }, true);
+
+  // Windows 下按 Alt 容易觸發瀏覽器右上角選單導致網頁失焦，必須用 blur 兜底清理
+  window.addEventListener('blur', () => {
+    clearAltStateAndHide();
+  });
 
   // 接收來自 background 的快捷鍵指令
   chrome.runtime.onMessage.addListener((req) => {
