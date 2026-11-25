@@ -85,6 +85,7 @@ Manifest V3 架构 + 强制穿透防复制限制 + 离线 Tesseract.js 框选 OC
 \---
 
 
+<img width="600" height="292" alt="75653c25264da0ba2b09fc89b67c6079" src="https://github.com/user-attachments/assets/95614735-41dd-49a0-8d22-8472e781eb0d" />
 
 \## 🗂️ 專案結構
 
@@ -120,4 +121,3 @@ Manifest V3 架构 + 强制穿透防复制限制 + 离线 Tesseract.js 框选 OC
 
 ### 提交前的最后一步提示
 如果你在 `popup.js` 或 `background.js` 里有留给用户填写自定义接口的输入框，确认里面的默认值是空字
-
